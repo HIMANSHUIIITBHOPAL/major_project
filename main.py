@@ -1,15 +1,38 @@
 import uvicorn
 from fastapi import FastAPI
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+import os
 
-app = FastAPI()
+# Import your existing playground app
+from app.playground_app import app as playground_app
 
-@app.get("/")
-def root():
-    return {"status": "running", "message": "Major Project API is live!"}
+# Wrap with a new FastAPI app that adds root route + frontend
+from fastapi import FastAPI
+from fastapi.routing import Mount
+
+# Add CORS middleware to playground app
+playground_app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Serve frontend at root "/"
+@playground_app.get("/")
+async def serve_frontend():
+    frontend_path = os.path.join(os.path.dirname(__file__), "frontend.html")
+    if os.path.exists(frontend_path):
+        return FileResponse(frontend_path, media_type="text/html")
+    return JSONResponse({"status": "running", "message": "Major Project AI Agents API", "docs": "/docs"})
+
 if __name__ == "__main__":
     uvicorn.run(
-        "app.playground_app:app",
-        host="0.0.0.0",   # required for cloud deployment
+        "main:playground_app",
+        host="0.0.0.0",
         port=7777,
-        reload= False     # False in production
+        reload=False
     )
