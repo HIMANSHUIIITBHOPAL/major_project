@@ -1,19 +1,23 @@
+import os
 import uvicorn
-from fastapi import FastAPI
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-import os
 
-# Import your existing playground app
-from app.playground_app import app as playground_app
+from phi.playground import Playground
 
-# Wrap with a new FastAPI app that adds root route + frontend
-from fastapi import FastAPI
-from fastapi.routing import Mount
+# Import agents
+from agents.stock_agent import stock_agent
+from agents.web_agent import web_agent
 
-# Add CORS middleware to playground app
-playground_app.add_middleware(
+# ✅ Create Playground app (THIS IS THE KEY FIX)
+playground = Playground(
+    agents=[stock_agent, web_agent]
+)
+
+app = playground.get_app()
+
+# ✅ Add CORS
+app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_credentials=True,
@@ -21,27 +25,21 @@ playground_app.add_middleware(
     allow_headers=["*"],
 )
 
-# Health check endpoint
-@playground_app.get("/health")
-async def health_check():
-    return JSONResponse({"status": "healthy", "message": "Server is running"})
+# ✅ Health check
+@app.get("/health")
+async def health():
+    return {"status": "healthy"}
 
-# Serve frontend at root "/"
-@playground_app.get("/")
+# ✅ Serve frontend
+@app.get("/")
 async def serve_frontend():
-    try:
-        frontend_path = os.path.join(os.path.dirname(__file__), "frontend.html")
-        if os.path.exists(frontend_path):
-            return FileResponse(frontend_path, media_type="text/html")
-        return JSONResponse({"status": "running", "message": "Major Project AI Agents API", "docs": "/docs"})
-    except Exception as e:
-        return JSONResponse({"status": "error", "message": str(e)}, status_code=500)
+    frontend_path = os.path.join(os.path.dirname(__file__), "frontend.html")
+    if os.path.exists(frontend_path):
+        return FileResponse(frontend_path)
+    return {"message": "Frontend not found", "docs": "/docs"}
 
+
+# ✅ Run (Render uses this automatically)
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 7777))
-    uvicorn.run(
-        "main:playground_app",
-        host="0.0.0.0",
-        port=port,
-        reload=False
-    )
+    uvicorn.run("main:app", host="0.0.0.0", port=port)
