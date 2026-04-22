@@ -21,13 +21,21 @@ playground_app.add_middleware(
     allow_headers=["*"],
 )
 
+# Health check endpoint
+@playground_app.get("/health")
+async def health_check():
+    return JSONResponse({"status": "healthy", "message": "Server is running"})
+
 # Serve frontend at root "/"
 @playground_app.get("/")
 async def serve_frontend():
-    frontend_path = os.path.join(os.path.dirname(__file__), "frontend.html")
-    if os.path.exists(frontend_path):
-        return FileResponse(frontend_path, media_type="text/html")
-    return JSONResponse({"status": "running", "message": "Major Project AI Agents API", "docs": "/docs"})
+    try:
+        frontend_path = os.path.join(os.path.dirname(__file__), "frontend.html")
+        if os.path.exists(frontend_path):
+            return FileResponse(frontend_path, media_type="text/html")
+        return JSONResponse({"status": "running", "message": "Major Project AI Agents API", "docs": "/docs"})
+    except Exception as e:
+        return JSONResponse({"status": "error", "message": str(e)}, status_code=500)
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 7777))
