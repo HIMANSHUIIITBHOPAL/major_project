@@ -30,9 +30,10 @@ async def serve_frontend():
     return JSONResponse({"status": "running", "message": "Major Project AI Agents API", "docs": "/docs"})
 
 if __name__ == "__main__":
+    port = int(os.getenv("PORT", 7777))
     uvicorn.run(
         "main:playground_app",
         host="0.0.0.0",
-        port=7777,
+        port=port,
         reload=False
     )
