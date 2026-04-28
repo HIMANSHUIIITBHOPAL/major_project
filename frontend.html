@@ -546,7 +546,6 @@
 </head>
 <body>
 
-<!-- HEADER -->
 <header>
   <div class="logo">
     <div class="logo-icon">🤖</div>
@@ -560,7 +559,6 @@
 
 <div class="container">
 
-  <!-- SIDEBAR -->
   <aside class="sidebar">
     <div class="sidebar-label">Agents</div>
 
@@ -587,7 +585,6 @@
     </div>
   </aside>
 
-  <!-- CHAT -->
   <div class="chat-area">
     <div class="chat-header">
       <div class="chat-title">
@@ -598,7 +595,6 @@
     </div>
 
     <div class="messages" id="messages">
-      <!-- Welcome screen -->
       <div class="welcome" id="welcomeScreen">
         <div class="welcome-logo">🤖</div>
         <h2>AI Agents Ready</h2>
@@ -743,18 +739,30 @@
       let data;
       try { data = JSON.parse(rawText); } catch { data = {}; }
 
-      let reply =
-        data?.content ||
-        data?.message ||
-        data?.response ||
-        (Array.isArray(data?.messages) ? data.messages.at(-1)?.content : null) ||
-        rawText;
+      let reply = "";
 
-      // Try parsing JSON response (if stringified)
-      try {
-        const parsed = JSON.parse(reply);
-        reply = `<pre>${JSON.stringify(parsed, null, 2)}</pre>`;
-      } catch {}
+      // 1. Try to get the top-level final content
+      if (data?.content) {
+          reply = data.content;
+      }
+      // 2. Fallback to the last assistant message that actually contains text
+      else if (data?.messages && Array.isArray(data.messages)) {
+          const astMsgs = data.messages.filter(m => m.role === 'assistant' && m.content);
+          if (astMsgs.length > 0) {
+              reply = astMsgs[astMsgs.length - 1].content;
+          }
+      }
+
+      // 3. Fallback for generic server or system messages
+      if (!reply && (data?.message || data?.response)) {
+          reply = data.message || data.response;
+      }
+
+      // 4. Final safety net (Prevents dumping raw JSON into the UI)
+      if (!reply) {
+          reply = "*(The agent executed a tool to check the requested data, but didn't generate a text summary. Please ask again.)*";
+          console.warn("Raw agent payload (No text generated):", rawText);
+      }
 
       addMessage('assistant', reply);
 
