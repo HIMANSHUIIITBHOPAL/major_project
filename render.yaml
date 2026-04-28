@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: major-project-jims
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python main.py
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: GROQ_API_KEY
+        sync: false
+      - key: PHI_API_KEY
+        sync: false
+    healthCheckPath: /health
