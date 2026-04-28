@@ -647,17 +647,22 @@
   let currentAgent = 'stock_agent';
   let isLoading = false;
 
+  // Maps agent name → UUID returned by the server
+  const agentIdMap = {};
+
   const agents = {
     stock_agent: { name: 'Stock Agent', icon: '📈' },
     web_agent:   { name: 'Web Agent',   icon: '🌐' },
   };
 
-  // ─── CHECK SERVER STATUS ───
+  // ─── CHECK SERVER STATUS + LOAD AGENT IDs ───
   async function checkStatus() {
     try {
-      const res = await fetch(`${BASE_URL}/v1/playground/agents`, { method: 'GET' });
+      const res = await fetch(`${BASE_URL}/v1/playground/agent/get`, { method: 'GET' });
       if (res.ok) {
         document.getElementById('statusText').textContent = 'online';
+        const list = await res.json();
+        list.forEach(a => { agentIdMap[a.name] = a.agent_id; });
       } else {
         document.getElementById('statusText').textContent = 'limited';
       }
@@ -729,14 +734,18 @@
     document.getElementById('sendBtn').disabled = true;
 
     try {
-      const res = await fetch(`${BASE_URL}/v1/playground/agents/${currentAgent}/runs`, {
+      // Phidata Playground API uses multipart/form-data with agent_id (UUID)
+      // Resolve UUID from server; fall back to name if not yet loaded
+      const resolvedAgentId = agentIdMap[currentAgent] || currentAgent;
+      const formData = new FormData();
+      formData.append('message', text);
+      formData.append('agent_id', resolvedAgentId);
+      formData.append('stream', 'false');
+      formData.append('session_id', getSessionId());
+
+      const res = await fetch(`${BASE_URL}/v1/playground/agent/run`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: text,
-          stream: false,
-          session_id: getSessionId(),
-        })
+        body: formData
       });
 
       removeTyping(typingId);
@@ -746,10 +755,16 @@
         throw new Error(err.detail || `HTTP ${res.status}`);
       }
 
-      const data = await res.json();
-      const reply = data?.content || data?.message || data?.response
-        || (Array.isArray(data?.messages) ? data.messages.at(-1)?.content : null)
-        || JSON.stringify(data);
+      // Phidata returns RunResponse JSON: { content: "string", messages: [...], ... }
+      const rawText = await res.text();
+      let data;
+      try { data = JSON.parse(rawText); } catch { data = {}; }
+      // content is a plain string in RunResponse
+      const reply = (typeof data?.content === 'string' && data.content)
+        ? data.content
+        : data?.message || data?.response
+          || (Array.isArray(data?.messages) ? data.messages.at(-1)?.content : null)
+          || rawText || JSON.stringify(data);
 
       addMessage('assistant', reply);
 
