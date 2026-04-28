@@ -637,17 +637,15 @@
 
 <div class="error-toast" id="errorToast"></div>
 
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
 <script>
   // ─── CONFIG ───
-  // Auto-detect: if opened via file:// use localhost, otherwise use same origin
-  const BASE_URL = window.location.protocol === 'file:'
-    ? 'https://major-project-jims.onrender.com/'
-    : window.location.origin;
+  const BASE_URL = 'https://major-project-jims.onrender.com';
 
   let currentAgent = 'stock_agent';
   let isLoading = false;
 
-  // Maps agent name → UUID returned by the server
   const agentIdMap = {};
 
   const agents = {
@@ -655,10 +653,13 @@
     web_agent:   { name: 'Web Agent',   icon: '🌐' },
   };
 
-  // ─── CHECK SERVER STATUS + LOAD AGENT IDs ───
+  // ─── INIT ───
+  checkStatus();
+
+  // ─── CHECK SERVER STATUS ───
   async function checkStatus() {
     try {
-      const res = await fetch(`${BASE_URL}/v1/playground/agent/get`, { method: 'GET' });
+      const res = await fetch(`${BASE_URL}/v1/playground/agent/get`);
       if (res.ok) {
         document.getElementById('statusText').textContent = 'online';
         const list = await res.json();
@@ -674,7 +675,10 @@
   // ─── SELECT AGENT ───
   function selectAgent(agentId, btn) {
     currentAgent = agentId;
-    document.querySelectorAll('.agent-btn').forEach(b => b.classList.remove('active'));
+
+    document.querySelectorAll('.agent-btn')
+      .forEach(b => b.classList.remove('active'));
+
     btn.classList.add('active');
 
     const agent = agents[agentId];
@@ -686,26 +690,7 @@
 
   function clearChat() {
     const msgs = document.getElementById('messages');
-    msgs.innerHTML = `
-      <div class="welcome" id="welcomeScreen">
-        <div class="welcome-logo">🤖</div>
-        <h2>AI Agents Ready</h2>
-        <p>Choose an agent from the sidebar and ask anything. Your agents are powered by Groq's Llama 3.3 70B model.</p>
-        <div class="suggestions" id="suggestions">
-          <button class="suggestion-card" onclick="sendSuggestion(this.dataset.q)" data-q="What is the current stock price of Apple (AAPL)?">
-            <span class="s-icon">📊</span>Apple stock price & fundamentals
-          </button>
-          <button class="suggestion-card" onclick="sendSuggestion(this.dataset.q)" data-q="Give me analyst recommendations for Tesla (TSLA)">
-            <span class="s-icon">🚗</span>Tesla analyst recommendations
-          </button>
-          <button class="suggestion-card" onclick="sendSuggestion(this.dataset.q)" data-q="What are the latest stock market news today?">
-            <span class="s-icon">📰</span>Latest market news today
-          </button>
-          <button class="suggestion-card" onclick="sendSuggestion(this.dataset.q)" data-q="Compare NVIDIA and AMD stock performance">
-            <span class="s-icon">💹</span>NVIDIA vs AMD comparison
-          </button>
-        </div>
-      </div>`;
+    msgs.innerHTML = document.getElementById('welcomeScreen')?.outerHTML || '';
   }
 
   // ─── SEND MESSAGE ───
@@ -717,26 +702,24 @@
   async function sendMessage() {
     const input = document.getElementById('userInput');
     const text = input.value.trim();
+
     if (!text || isLoading) return;
 
-    // Hide welcome
     const welcome = document.getElementById('welcomeScreen');
     if (welcome) welcome.remove();
 
-    // Add user message
     addMessage('user', text);
+
     input.value = '';
     input.style.height = 'auto';
 
-    // Show typing
     const typingId = showTyping();
     isLoading = true;
     document.getElementById('sendBtn').disabled = true;
 
     try {
-      // Phidata Playground API uses multipart/form-data with agent_id (UUID)
-      // Resolve UUID from server; fall back to name if not yet loaded
       const resolvedAgentId = agentIdMap[currentAgent] || currentAgent;
+
       const formData = new FormData();
       formData.append('message', text);
       formData.append('agent_id', resolvedAgentId);
@@ -755,76 +738,86 @@
         throw new Error(err.detail || `HTTP ${res.status}`);
       }
 
-      // Phidata returns RunResponse JSON: { content: "string", messages: [...], ... }
       const rawText = await res.text();
+
       let data;
       try { data = JSON.parse(rawText); } catch { data = {}; }
-      // content is a plain string in RunResponse
-      const reply = (typeof data?.content === 'string' && data.content)
-        ? data.content
-        : data?.message || data?.response
-          || (Array.isArray(data?.messages) ? data.messages.at(-1)?.content : null)
-          || rawText || JSON.stringify(data);
+
+      let reply =
+        data?.content ||
+        data?.message ||
+        data?.response ||
+        (Array.isArray(data?.messages) ? data.messages.at(-1)?.content : null) ||
+        rawText;
+
+      // Try parsing JSON response (if stringified)
+      try {
+        const parsed = JSON.parse(reply);
+        reply = `<pre>${JSON.stringify(parsed, null, 2)}</pre>`;
+      } catch {}
 
       addMessage('assistant', reply);
 
     } catch (err) {
       removeTyping(typingId);
       showError(`Error: ${err.message}`);
-      addMessage('assistant', `⚠️ Could not reach the agent. Make sure your server is running at \`${BASE_URL}\`.\n\nError: ${err.message}`);
+
+      addMessage(
+        'assistant',
+        `⚠️ Could not reach the agent.\n\nError: ${err.message}`
+      );
+
+    } finally {
+      isLoading = false;
+      document.getElementById('sendBtn').disabled = false;
     }
-
-    isLoading = false;
-    document.getElementById('sendBtn').disabled = false;
   }
 
-  // ─── HELPERS ───
-  function addMessage(role, content) {
-    const msgs = document.getElementById('messages');
-    const div = document.createElement('div');
-    div.className = `msg ${role}`;
+  // ─── MESSAGE RENDERING ───
+  function addMessage(role, text) {
+    const messages = document.getElementById('messages');
 
-    const avatar = role === 'user' ? '👤' : agents[currentAgent]?.icon || '🤖';
-    const formatted = formatContent(content);
+    const msg = document.createElement('div');
+    msg.className = `msg ${role}`;
 
-    div.innerHTML = `
-      <div class="msg-avatar">${avatar}</div>
-      <div class="msg-bubble">${formatted}</div>`;
-    msgs.appendChild(div);
-    msgs.scrollTop = msgs.scrollHeight;
+    msg.innerHTML = `
+      <div class="msg-avatar">${role === 'user' ? '🧑' : '🤖'}</div>
+      <div class="msg-bubble">${formatText(text)}</div>
+    `;
+
+    messages.appendChild(msg);
+    messages.scrollTop = messages.scrollHeight;
   }
 
-  function formatContent(text) {
-    if (typeof text !== 'string') text = JSON.stringify(text, null, 2);
-
-    // Code blocks
-    text = text.replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>');
-    // Bold
-    text = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-    // Inline code
-    text = text.replace(/`([^`]+)`/g, '<code style="background:rgba(0,0,0,0.3);padding:2px 6px;border-radius:4px;font-family:\'DM Mono\',monospace;font-size:12px">$1</code>');
-    // Line breaks
-    text = text.replace(/\n/g, '<br>');
-
-    return text;
+  function formatText(text) {
+    try {
+      return marked.parse(text);
+    } catch {
+      return text.replace(/\n/g, '<br>');
+    }
   }
 
-  let typingCounter = 0;
+  // ─── TYPING INDICATOR ───
   function showTyping() {
-    const id = `typing-${++typingCounter}`;
-    const msgs = document.getElementById('messages');
+    const id = 'typing-' + Date.now();
+
+    const messages = document.getElementById('messages');
     const div = document.createElement('div');
-    div.id = id;
     div.className = 'typing-indicator';
+    div.id = id;
+
     div.innerHTML = `
-      <div class="msg-avatar" style="background:linear-gradient(135deg,var(--accent),var(--accent3));width:34px;height:34px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px">${agents[currentAgent]?.icon || '🤖'}</div>
+      <div class="msg-avatar">🤖</div>
       <div class="typing-dots">
         <div class="typing-dot"></div>
         <div class="typing-dot"></div>
         <div class="typing-dot"></div>
-      </div>`;
-    msgs.appendChild(div);
-    msgs.scrollTop = msgs.scrollHeight;
+      </div>
+    `;
+
+    messages.appendChild(div);
+    messages.scrollTop = messages.scrollHeight;
+
     return id;
   }
 
@@ -832,11 +825,24 @@
     document.getElementById(id)?.remove();
   }
 
+  // ─── UTILITIES ───
   function showError(msg) {
     const toast = document.getElementById('errorToast');
     toast.textContent = msg;
     toast.style.display = 'block';
-    setTimeout(() => toast.style.display = 'none', 4000);
+
+    setTimeout(() => {
+      toast.style.display = 'none';
+    }, 3000);
+  }
+
+  function getSessionId() {
+    let id = localStorage.getItem('session_id');
+    if (!id) {
+      id = 'sess_' + Math.random().toString(36).slice(2);
+      localStorage.setItem('session_id', id);
+    }
+    return id;
   }
 
   function handleKey(e) {
@@ -848,18 +854,8 @@
 
   function autoResize(el) {
     el.style.height = 'auto';
-    el.style.height = Math.min(el.scrollHeight, 140) + 'px';
+    el.style.height = el.scrollHeight + 'px';
   }
-
-  function getSessionId() {
-    if (!sessionStorage.getItem('sid')) {
-      sessionStorage.setItem('sid', Math.random().toString(36).slice(2));
-    }
-    return sessionStorage.getItem('sid');
-  }
-
-  // Init
-  checkStatus();
 </script>
 </body>
 </html>
