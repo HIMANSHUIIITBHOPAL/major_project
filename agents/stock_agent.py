@@ -43,10 +43,11 @@ stock_agent = StockAgent(
         )
     ],
     instructions=[
-        "Use tables to display financial data",
-        "Highlight PE ratio, market cap, 52-week high/low",
-        "Summarize analyst recommendations clearly",
-        "Always include the data source",
+        "Use tables to display financial data when data is successfully retrieved.",
+        "Highlight PE ratio, market cap, 52-week high/low.",
+        "Summarize analyst recommendations clearly.",
+        "Always include the data source.",
+        "CRITICAL: If you receive an error or rate-limit message from a tool, DO NOT attempt to format it as a table. Simply explain the error to the user in plain text."
     ],
     show_tool_calls=True,
     markdown=True,

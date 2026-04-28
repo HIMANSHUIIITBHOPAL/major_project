@@ -6,6 +6,7 @@ Fixes:
   - Sets a browser-like User-Agent so Yahoo Finance doesn't block the request
   - Caches Ticker objects per symbol to avoid redundant session creation
   - Falls back gracefully with a readable error instead of crashing the agent
+  - Strips massive metadata from news articles to prevent LLM token limits
 """
 
 import json
@@ -132,4 +133,14 @@ class YFinanceCachedTools(YFinanceTools):
         news = _get_ticker(symbol).news
         if not news:
             return f"No recent news found for {symbol}"
-        return json.dumps(news[:num_stories], indent=2, default=str)
+
+        # FIX: Strip massive metadata to save Groq tokens and prevent TPM limits
+        clean_news = []
+        for n in news[:num_stories]:
+            clean_news.append({
+                "title": n.get("title", "No Title"),
+                "publisher": n.get("publisher", "Unknown"),
+                "link": n.get("link", "")
+            })
+
+        return json.dumps(clean_news, indent=2)
